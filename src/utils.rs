@@ -2,17 +2,20 @@ use lopdf::Document;
 use crate::biblio::{BiblioResponse, BiblioError};
 
 pub fn format_apa(resp: &BiblioResponse) -> String {
-    let authors = match resp.authors.len() {
-        1 => resp.authors[0].clone(),
-        2 => format!("{}, & {}", resp.authors[0], resp.authors[1]),
-        _ => format!("{}, et al.", resp.authors[0]),
+    let raw_authors = resp.authors.clone().unwrap_or_default();
+
+    let authors = match raw_authors.len() {
+        0 => "Unknown".to_string(),
+        1 => raw_authors[0].clone(),
+        2 => format!("{}, & {}", raw_authors[0], raw_authors[1]),
+        _ => format!("{}, et al.", raw_authors[0]),
     };
 
-    let year = if resp.year.is_empty() { "n.d." } else { &resp.year };
+    let year = resp.year.as_deref().unwrap_or("n.d.");
 
-    let title = resp.title.chars()
-        .map(|c| if r#"<>:"/\|?*"#.contains(c) { '_' } else { c })
-        .collect::<String>();
+    let title = resp.title.as_deref()
+        .map(|t| t.chars().map(|c| if r#"<>:"/\|?*"#.contains(c) { '_' } else { c }).collect::<String>())
+        .unwrap_or_else(|| "Untitled".to_string());
 
     format!("{} ({}). {}", authors, year, title)
 }

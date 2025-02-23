@@ -9,9 +9,9 @@ use serde_json::from_str;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct BiblioResponse {
-    pub authors: Vec<String>,
-    pub title: String,
-    pub year: String,
+    pub authors: Option<Vec<String>>,
+    pub title: Option<String>,
+    pub year: Option<String>,
 }
 
 #[derive(Debug)]
@@ -36,17 +36,19 @@ impl std::fmt::Display for BiblioError {
 impl std::error::Error for BiblioError {}
 
 
-pub async fn extract_metadata(client: &Client, sample: String) -> Result<BiblioResponse, BiblioError> {
-    let request = Request {
-        contents: vec![Content {
-            role: Role::User,
-            parts: vec![Part {
-                text: Some(sample),
-                inline_data: None,
-                file_data: None,
-                video_metadata: None,
-            }],
+pub async fn extract_metadata(client: &Client, samples: Vec<String>) -> Result<Vec<BiblioResponse>, BiblioError> {
+    let contents = samples.into_iter().map(|sample| Content {
+        role: Role::User,
+        parts: vec![Part {
+            text: Some(sample),
+            inline_data: None,
+            file_data: None,
+            video_metadata: None,
         }],
+    }).collect();
+
+    let request = Request {
+        contents: contents,
         tools: vec![],
         safety_settings: vec![],
         generation_config: Some(GenerationConfig {
