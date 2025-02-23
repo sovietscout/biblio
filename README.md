@@ -31,7 +31,7 @@ Download the latest `.exe` release from GitHub Releases and place it in a direct
 2. Set up environment variables in a `.env` file:
    ```sh
    API_KEY=your_google_gemini_api_key
-   MODEL=your_gemini_model  // gemini-2.0-flash-lite-preview-02-05
+   MODEL=your_gemini_model # gemini-2.0-flash-lite-preview-02-05
    ```
 3. Build and run the project:
    ```sh
