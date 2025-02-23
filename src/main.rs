@@ -10,18 +10,24 @@ use std::{env, fs, path::PathBuf};
 use dotenv::dotenv;
 use google_generative_ai_rs::v1::api::Client;
 use google_generative_ai_rs::v1::gemini::Model;
-use tokio::runtime::Runtime;
 
-fn main() -> Result<(), BiblioError> {
+#[tokio::main]
+async fn main() -> Result<(), BiblioError> {
     dotenv().ok();
 
-    let model = env::var("MODEL").map_err(|_| BiblioError::IoError(std::io::Error::new(
-        std::io::ErrorKind::NotFound, "`MODEL` key must be set in .env"
-    )))?;
-
-    let api_key = env::var("API_KEY").map_err(|_| BiblioError::IoError(std::io::Error::new(
-        std::io::ErrorKind::NotFound, "`API_KEY` key must be set in .env"
-    )))?;
+    let model = env::var("MODEL").map_err(|_| {
+        BiblioError::IoError(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "`MODEL` key must be set in .env",
+        ))
+    })?;
+    
+    let api_key = env::var("API_KEY").map_err(|_| {
+        BiblioError::IoError(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "`API_KEY` key must be set in .env",
+        ))
+    })?;
 
     let client = Client::new_from_model(Model::Custom(model), api_key);
 
@@ -30,59 +36,76 @@ fn main() -> Result<(), BiblioError> {
         eprintln!("No files specified");
         return Ok(());
     }
-    
-    if args.len() > BATCH_SIZE {
+
+    if args.len() >= BATCH_SIZE {
         println!("Batching in groups of {}", BATCH_SIZE);
     }
 
-    let rt = Runtime::new().map_err(BiblioError::IoError)?;
+    let mut sample_tasks = Vec::new();
+    for path_raw in args {
+        let path = fs::canonicalize(&path_raw).map_err(BiblioError::IoError)?;
+        let path_str = path.to_str().unwrap().to_string();
+        let path_clone = path.clone();
+        
+        let task = tokio::task::spawn_blocking(move || {
+            generate_sample(&path_str, &[1, 2]).map(|sample| (path_clone, sample))
+        });
+        sample_tasks.push(task);
+    }
 
-    // Batch to avoid RPM limits
-    for chunk in args.chunks(BATCH_SIZE) {
-        let mut samples = Vec::new();
-        let mut paths = Vec::new();
+    let mut results = Vec::new();
+    for task in sample_tasks {
+        match task.await {
+            Ok(Ok(pair)) => results.push(pair),
+            Ok(Err(err)) => eprintln!("Error generating sample: {:?}", err),
+            Err(err) => eprintln!("Task panicked: {:?}", err),
+        }
+    }
 
-        for path_raw in chunk {
-            let path = fs::canonicalize(path_raw).map_err(BiblioError::IoError)?;
-
-            paths.push(path.clone());
-            match generate_sample(&path.to_str().unwrap(), &[1, 2]) {
-                Ok(text) => samples.push(text),
-                Err(err) => eprintln!("Error extracting text from {:?}: {:?}", path_raw, err),
-            }
+    for chunk in results.chunks(BATCH_SIZE) {
+        let mut samples_batch = Vec::new();
+        let mut paths_batch = Vec::new();
+        for (path, sample) in chunk {
+            paths_batch.push(path.clone());
+            samples_batch.push(sample.clone());
         }
 
-        if samples.is_empty() {
+        if samples_batch.is_empty() {
             continue;
         }
 
-        match rt.block_on(extract_metadata(&client, samples)) {
+        match extract_metadata(&client, samples_batch).await {
             Ok(metadata) => {
-                if paths.len() != metadata.len() {
-                    eprintln!("Warning: Received {} metadata entires for {} files", metadata.len(), paths.len());
+                
+                if paths_batch.len() != metadata.len() {
+                    eprintln!(
+                        "Warning: Received {} metadata entries for {} files",
+                        metadata.len(),
+                        paths_batch.len()
+                    );
                 }
 
                 for (i, m) in metadata.iter().enumerate() {
-                    if i >= paths.len() {
+                    if i >= paths_batch.len() {
                         break;
                     }
-
-                    let name = paths[i].file_name().unwrap_or_default().to_str().unwrap_or_default();
-                    let name_fmt = format_apa(&m) + ".pdf";
-                    let name_path = paths[i].with_file_name(name_fmt.clone());
                     
-                    match fs::rename(&paths[i], &name_path) {
-                        Ok(_) => println!(r#"Renamed "{:?}" to "{:?}""#, name, &name_fmt),
-                        Err(err) => {
-                            eprintln!("Failed to rename {:?}: {}", paths[i], err);
-                        }
+                    let name = paths_batch[i]
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_str()
+                        .unwrap_or_default();
+                    
+                    let name_fmt = format_apa(&m) + ".pdf";
+                    let name_path = paths_batch[i].with_file_name(name_fmt.clone());
+
+                    match fs::rename(&paths_batch[i], &name_path) {
+                        Ok(_) => println!("Renamed {:?} to {:?}", name, name_fmt),
+                        Err(err) => eprintln!("Failed to rename {:?}: {}", paths_batch[i], err),
                     }
-    
                 }
             }
-            Err(err) => {
-                eprintln!("Failed to extract metadata for batch: {}", err);
-            }
+            Err(err) => eprintln!("Failed to extract metadata for batch: {}", err),
         }
     }
 
