@@ -1,10 +1,10 @@
 # Biblio
-Biblio is a command-line tool for extracting metadata from academic PDFs and renaming them in accordinig to a customisable format. It leverages the Google Gemini API for metadata extraction and provides a flexible way to manage your academic or research PDF library.
+Biblio is a command-line tool for extracting metadata from academic PDFs and renaming them according to a customisable format. It leverages the Google Gemini API for metadata extraction and provides a flexible way to manage your academic or research PDF library.
 
 ## Features
 - Extracts metadata (authors, title, and year) from PDFs.
 - Uses Google Gemini LLM for intelligent text extraction.
-- Renames PDFs in APA-compliant format.
+- Renames PDFs in a customisable format.
 - Handles batch processing efficiently.
 - Skips files with missing metadata.
 - Prevents filename conflicts by sanitizing invalid characters.
@@ -45,8 +45,14 @@ biblio file1.pdf file2.pdf ...
 - Extracted metadata is used to rename the files automatically.
 - Example output:
   ```sh
-  Renamed "paper1.pdf" to "Smith, J. (2020). Research Study.pdf"
-  Renamed "paper2.pdf" to "Doe, J., & Brown, A. (2018). AI in Healthcare.pdf"
+  > biblio paper1.pdf paper2.pdf
+  - Loaded config. Model: gemini-2.0-flash-lite
+  - Processing 2 file(s)
+  - Processing batch: #1
+    - File: "paper1.pdf"
+      - Renamed "paper1.pdf" to "Smith, J. (2020). Research Study"
+    - File: "paper2.pdf"
+      - Renamed "paper2.pdf" to "Doe, J., & Brown, A. (2018). AI in Healthcare.pdf"
   ```
 
 ## License
