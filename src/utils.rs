@@ -22,10 +22,10 @@ pub fn format_apa(resp: &BiblioResponse) -> String {
 
 pub fn generate_sample(path: &str, pages: &[u32]) -> Result<String, BiblioError> {
     let doc = Document::load(path)
-        .map_err(|e| BiblioError::PdfError(format!("Failed to load PDF: {}", e)))?;
+        .map_err(|e| BiblioError::PDFError(format!("Failed to load PDF: {}", e)))?;
 
     let text = doc.extract_text(pages)
-        .map_err(|e| BiblioError::PdfError(format!("Failed to extract text from PDF: {}", e)))?;
+        .map_err(|e| BiblioError::PDFError(format!("Failed to extract text from PDF: {}", e)))?;
 
     Ok(text)
 }

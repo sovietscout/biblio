@@ -16,19 +16,21 @@ pub(crate) struct BiblioResponse {
 
 #[derive(Debug)]
 pub(crate) enum BiblioError {
-    PdfError(String),
+    ENVError(String),
+    PDFError(String),
     GeminiError(String),
-    JsonError(serde_json::Error),
-    IoError(std::io::Error),
+    JSONError(serde_json::Error),
+    IOError(std::io::Error),
 }
 
 impl std::fmt::Display for BiblioError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            BiblioError::PdfError(msg) => write!(f, "PDF Error: {}", msg),
+            BiblioError::ENVError(msg) => write!(f, "ENV Error: {}", msg),
+            BiblioError::PDFError(msg) => write!(f, "PDF Error: {}", msg),
             BiblioError::GeminiError(msg) => write!(f, "Gemini API Error: {}", msg),
-            BiblioError::JsonError(err) => write!(f, "JSON Parsing Error: {}", err),
-            BiblioError::IoError(err) => write!(f, "IO Error: {}", err),
+            BiblioError::JSONError(err) => write!(f, "JSON Parsing Error: {}", err),
+            BiblioError::IOError(err) => write!(f, "IO Error: {}", err),
         }
     }
 }
@@ -79,5 +81,5 @@ pub async fn extract_metadata(client: &Client, samples: Vec<String>) -> Result<V
         .and_then(|p| p.text.clone())
         .unwrap_or_default();
 
-    from_str(&response_text).map_err(BiblioError::JsonError)
+    from_str(&response_text).map_err(BiblioError::JSONError)
 }
