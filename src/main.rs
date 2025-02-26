@@ -4,51 +4,29 @@ mod utils;
 
 use biblio::{extract_metadata, BiblioError};
 use constants::BATCH_SIZE;
-use dotenv::dotenv;
 use google_generative_ai_rs::v1::{api::Client, gemini::Model};
 use std::{env, fs, path::PathBuf};
-use utils::{format_apa, generate_sample};
+use utils::{format_custom, generate_sample, load_config};
 
 #[tokio::main]
 async fn main() -> Result<(), BiblioError> {
-    dotenv().ok();
+    dotenv::dotenv().ok();
 
-    println!("Starting Biblio Processing");
+    let config = load_config()?;
+    println!("- Loaded config. Model: {}", config.model);
 
-    let model_name = match env::var("MODEL") {
-        Ok(val) => {
-            println!("  Model: {}", val);
-            val
-        }
-        Err(_) => {
-            eprintln!("Error: `MODEL` key not found in .env. Please set it to your Gemini model.");
-            return Err(BiblioError::ENVError("`MODEL` key not found in .env".to_string()));
-        }
-    };
-
-    let api_key = match env::var("API_KEY") {
-        Ok(val) => {
-            println!("  API Key Loaded");
-            val
-        }
-        Err(_) => {
-            eprintln!("Error: `API_KEY` key not found in .env. Please set your Google Gemini API key.");
-            return Err(BiblioError::ENVError("`API_KEY` key not found in .env".to_string()));
-        }
-    };
-
-    let client = Client::new_from_model(Model::Custom(model_name), api_key);
+    let client = Client::new_from_model(Model::Custom(config.model), config.api_key);
 
     let args: Vec<PathBuf> = env::args_os().skip(1).map(PathBuf::from).collect();
     if args.is_empty() {
-        eprintln!("Error: No files specified. Usage: biblio <file1.pdf> <file2.pdf> ...");
+        eprintln!("- Error: No files specified. Usage: biblio <file1.pdf> <file2.pdf> ...");
         return Ok(());
     } else {
-        println!("  Processing {} files", args.len());
+        println!("- Processing {} file(s)", args.len());
     }
 
     if args.len() >= BATCH_SIZE {
-        println!("  Batching in groups of {}", BATCH_SIZE);
+        println!("- Batching in groups of {}", BATCH_SIZE);
     }
 
     let mut sample_tasks = Vec::new();
@@ -73,7 +51,7 @@ async fn main() -> Result<(), BiblioError> {
     }
 
     for (chunk_index, chunk) in results.chunks(BATCH_SIZE).enumerate() {
-        println!("  Processing batch: #{}", chunk_index + 1);
+        println!("- Processing batch: #{}", chunk_index + 1);
         let mut samples_batch = Vec::new();
         let mut paths_batch = Vec::new();
         for (path, sample) in chunk {
@@ -82,7 +60,7 @@ async fn main() -> Result<(), BiblioError> {
         }
 
         if samples_batch.is_empty() {
-            println!("  Skipping empty batch: No samples to process");
+            println!("- Skipping empty batch: No samples to process");
             continue;
         }
 
@@ -90,7 +68,7 @@ async fn main() -> Result<(), BiblioError> {
             Ok(metadata) => {
                 if paths_batch.len() != metadata.len() {
                     eprintln!(
-                        "    Warning: Received {} metadata entries for {} files",
+                        "  - Warning: Received {} metadata entries for {} files",
                         metadata.len(),
                         paths_batch.len()
                     );
@@ -107,24 +85,22 @@ async fn main() -> Result<(), BiblioError> {
                         .to_str()
                         .unwrap_or_default();
 
-                    let name_fmt = format_apa(&m) + ".pdf";
+                    let name_fmt = format_custom(&m, &config.format) + ".pdf";
                     let name_path = paths_batch[i].with_file_name(name_fmt.clone());
 
-                    println!("    File: \"{}\"", name);
+                    println!("  - File: \"{}\"", name);
                     match fs::rename(&paths_batch[i], &name_path) {
-                        Ok(_) => println!("      Renamed \"{}\" to \"{}\"", name, name_fmt),
+                        Ok(_) => println!("    - Renamed \"{}\" to \"{}\"", name, name_fmt),
                         Err(err) => eprintln!(
-                            "      Failed to rename \"{:?}\": {}",
+                            "    - Failed to rename \"{:?}\": {}",
                             paths_batch[i], err
                         ),
                     }
                 }
             }
-            Err(err) => eprintln!("    Failed to extract metadata for batch: {}", err),
+            Err(err) => eprintln!("  - Failed to extract metadata for batch: {}", err),
         }
     }
-
-    println!("Biblio Processing Complete");
 
     Ok(())
 }

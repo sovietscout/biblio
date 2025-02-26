@@ -37,7 +37,6 @@ impl std::fmt::Display for BiblioError {
 
 impl std::error::Error for BiblioError {}
 
-
 pub async fn extract_metadata(client: &Client, samples: Vec<String>) -> Result<Vec<BiblioResponse>, BiblioError> {
     let contents = samples.into_iter().map(|sample| Content {
         role: Role::User,
@@ -71,7 +70,7 @@ pub async fn extract_metadata(client: &Client, samples: Vec<String>) -> Result<V
     };
 
     let response = client.post(MAX_TIMEOUT_SECONDS, &request).await
-        .map_err(|_| BiblioError::GeminiError("Could not connect to Gemini.".to_string()))?;
+        .map_err(|e| BiblioError::GeminiError(format!("Could not connect to Gemini. {}", e).to_string()))?;
 
     let response_text = response.rest()
         .unwrap()

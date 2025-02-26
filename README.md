@@ -1,5 +1,5 @@
 # Biblio
-Biblio is a command-line tool for extracting metadata from academic PDFs and renaming them in an APA-compliant format. It automates the process of organizing research papers by leveraging Google's Gemini family of LLMs to extract author names, titles, and publication years.
+Biblio is a command-line tool for extracting metadata from academic PDFs and renaming them in accordinig to a customisable format. It leverages the Google Gemini API for metadata extraction and provides a flexible way to manage your academic or research PDF library.
 
 ## Features
 - Extracts metadata (authors, title, and year) from PDFs.
@@ -10,34 +10,32 @@ Biblio is a command-line tool for extracting metadata from academic PDFs and ren
 - Prevents filename conflicts by sanitizing invalid characters.
 
 ## Installation
-### Option 1: Precompiled Executable (Recommended for Windows)
-Download the latest `.exe` release from GitHub Releases and place it in a directory included in your system's `PATH`.
 
-### Option 2: Build from Source
+1.  **Clone the Repository:**
+    ```bash
+    git clone <repository_url>
+    cd biblio
+    ```
 
-#### Prerequisites
-- Rust (latest stable version)
-- Google Gemini API Key
-- `dotenv` for environment variable management
-- `lopdf` for PDF text extraction
-- `serde` for JSON parsing
+2.  **Create the `.env` File:**
+    Create a `.env` file in the root directory of the project. Add the following content, replacing the placeholders with your actual values:
+    ```properties
+    MODEL = gemini-2.0-flash-lite
+    API_KEY = YOUR_GEMINI_API_KEY
+    FORMAT = "{authors} ({year}). {title}"
+    ```
+    - **MODEL:** The name of the Gemini model to use (e.g., `gemini-2.0-flash-lite`).
+    - **API_KEY:** Your Google Gemini API key.
+    - **FORMAT_STR:** The format string for renaming files. You can use the following placeholders:
+        -   `{authors}`: The authors of the document.
+        -   `{title}`: The title of the document.
+        -   `{year}`: The year of the document.
+        - if these properties are not found, default values are used. For example: `{authors}` defaults to `Unknown Author`.
 
-#### Steps
-1. Clone the repository:
-   ```sh
-   git clone https://github.com/sovietscout/biblio.git
-   cd biblio
-   ```
-2. Set up environment variables in a `.env` file:
-   ```sh
-   API_KEY=your_google_gemini_api_key
-   MODEL=your_gemini_model # gemini-2.0-flash-lite-preview-02-05
-   ```
-3. Build and run the project:
-   ```sh
-   cargo build --release
-   ./target/release/biblio <pdf-files>
-   ```
+3.  **Build the Project:**
+    ```bash
+    cargo build --release
+    ```
 
 ## Usage
 ```sh
@@ -50,11 +48,6 @@ biblio file1.pdf file2.pdf ...
   Renamed "paper1.pdf" to "Smith, J. (2020). Research Study.pdf"
   Renamed "paper2.pdf" to "Doe, J., & Brown, A. (2018). AI in Healthcare.pdf"
   ```
-
-## Error Handling
-- If a PDF has no extractable text, it is skipped.
-- If the LLM fails to generate metadata, an error is logged.
-- Invalid characters in filenames are replaced with underscores.
 
 ## License
 MIT License. See `LICENSE` file for details.
