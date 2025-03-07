@@ -1,59 +1,65 @@
 # Biblio
-Biblio is a command-line tool for extracting metadata from academic PDFs and renaming them according to a customisable format. It leverages the Google Gemini API for metadata extraction and provides a flexible way to manage your academic or research PDF library.
+Biblio is a simple command-line tool for managing academic PDFs. It extracts metadata (title, authors, year) and renames files automatically based on a customizable format.
 
-## Features
-- Extracts metadata (authors, title, and year) from PDFs.
-- Uses Google Gemini LLM for intelligent text extraction.
-- Renames PDFs in a customisable format.
-- Handles batch processing efficiently.
-- Skips files with missing metadata.
-- Prevents filename conflicts by sanitizing invalid characters.
+## 🚀Features
+- Extracts metadata using Google Gemini API.
+- Renames PDFs with a structured naming format.
+- Batch processes multiple files.
+- Prevents filename conflicts.
 
-## Installation
+## 🔧Installation
 
-1.  **Clone the Repository:**
-    ```bash
-    git clone <repository_url>
-    cd biblio
-    ```
+### Option 1: Download the Windows Executable
+1. Download the latest `.exe` file from the [Releases](https://github.com/sovietscout/biblio/releases/tag/v1.1) page.
+2. Place it in a preferred directory for easy access.
+3. Run the .exe directly from the command line or by double-clicking it.
 
-2.  **Create the `.env` File:**
-    Create a `.env` file in the root directory of the project. Add the following content, replacing the placeholders with your actual values:
-    ```properties
-    MODEL = gemini-2.0-flash-lite
-    API_KEY = YOUR_GEMINI_API_KEY
-    FORMAT = "{authors} ({year}). {title}"
-    ```
-    - **MODEL:** The name of the Gemini model to use (e.g., `gemini-2.0-flash-lite`).
-    - **API_KEY:** Your Google Gemini API key.
-    - **FORMAT_STR:** The format string for renaming files. You can use the following placeholders:
-        -   `{authors}`: The authors of the document.
-        -   `{title}`: The title of the document.
-        -   `{year}`: The year of the document.
-        - if these properties are not found, default values are used. For example: `{authors}` defaults to `Unknown Author`.
+### Option 2: Build from Source (For Developers)
+1. **Clone the repository:**
+   ```sh
+   git clone https://github.com/sovietscout/biblio.git
+   cd biblio
+   ```
+2. **Build the project:**
+   ```sh
+   cargo build --release
+   ```
 
-3.  **Build the Project:**
-    ```bash
-    cargo build --release
-    ```
+## 📄Configuration
+Create a `.env` file in the project root:
+```properties
+MODEL=gemini-2.0-flash-lite
+API_KEY=YOUR_GEMINI_API_KEY
+FORMAT="{authors} ({year}). {title}"
+```
+**Customizing the Format:**
+- You can define how renamed files should be structured using placeholders:
+ - `{authors}` → Author names (defaults to `Unknown Author` if not found).
+ - `{year}` → Publication year (defaults to `Unknown Year` if missing).
+ - `{title}` → Document title (defaults to `Untitled` if missing).
+- Example format: `FORMAT="{authors} - {title} ({year})"` renames a file to `Smith, J. - Research Study (2020).pdf`.
 
-## Usage
+## 🔑Getting a Google Gemini API Key
+1. Go to [Google AI Studio](https://aistudio.google.com/).
+2. Sign in with your Google account.
+3. Navigate to the 'Get API key' section and create a new API key.
+4. Copy the API key and add it to your `.env` file as `API_KEY`.
+
+## 📂Usage
 ```sh
 biblio file1.pdf file2.pdf ...
 ```
 - Processes multiple PDFs at once.
-- Extracted metadata is used to rename the files automatically.
-- Example output:
-  ```sh
-  > biblio paper1.pdf paper2.pdf
-  - Loaded config. Model: gemini-2.0-flash-lite
-  - Processing 2 file(s)
-  - Processing batch: #1
-    - File: "paper1.pdf"
-      - Renamed "paper1.pdf" to "Smith, J. (2020). Research Study"
-    - File: "paper2.pdf"
-      - Renamed "paper2.pdf" to "Doe, J., & Brown, A. (2018). AI in Healthcare.pdf"
-  ```
+- Renames files using extracted metadata.
 
-## License
-MIT License. See `LICENSE` file for details.
+### Example
+```sh
+> biblio paper1.pdf paper2.pdf
+- Processing 2 files...
+  - "paper1.pdf" → "Smith, J. (2020). Research Study.pdf"
+  - "paper2.pdf" → "Doe, J., & Brown, A. (2018). AI in Healthcare.pdf"
+```
+
+## 📜License
+MIT License. See `LICENSE` for details.
+
