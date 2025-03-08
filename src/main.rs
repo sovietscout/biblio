@@ -2,105 +2,156 @@ mod biblio;
 mod constants;
 mod utils;
 
-use biblio::{extract_metadata, BiblioError};
+use biblio::{parse_document_metadata, BiblioError};
 use constants::BATCH_SIZE;
 use google_generative_ai_rs::v1::{api::Client, gemini::Model};
-use std::{env, fs, path::PathBuf};
-use utils::{format_custom, generate_sample, load_config};
+use std::{
+    env,
+    fs,
+    path::PathBuf,
+    sync::Arc,
+};
+use tokio::{
+    sync::mpsc,
+    task,
+};
+use utils::{format_filename, extract_pdf_sample, load_config};
+
+type SampleResult = Result<(PathBuf, String), BiblioError>;
 
 #[tokio::main]
 async fn main() -> Result<(), BiblioError> {
     dotenv::dotenv().ok();
-
     let config = load_config()?;
-    println!("- Loaded config. Model: {}", config.model);
-
-    let client = Client::new_from_model(Model::Custom(config.model), config.api_key);
-
+    let client = Arc::new(Client::new_from_model(Model::Custom(config.model.clone()), config.api_key.clone()));
+    
     let args: Vec<PathBuf> = env::args_os().skip(1).map(PathBuf::from).collect();
     if args.is_empty() {
-        eprintln!("- Error: No files specified. Usage: biblio <file1.pdf> <file2.pdf> ...");
+        eprintln!("Error: No files specified. Usage: biblio <file1.pdf> <file2.pdf> ...");
         return Ok(());
-    } else {
-        println!("- Processing {} file(s)", args.len());
     }
 
-    if args.len() >= BATCH_SIZE {
-        println!("- Batching in groups of {}", BATCH_SIZE);
-    }
-
-    let mut sample_tasks = Vec::new();
+    println!("Processing {} files", args.len());
+    
+    let (tx, rx) = mpsc::channel::<SampleResult>(args.len());
+    
     for path_raw in args {
-        let path = fs::canonicalize(&path_raw).map_err(BiblioError::IOError)?;
-        let path_str = path.to_str().unwrap().to_string();
-        let path_clone = path.clone();
-
-        let task = tokio::task::spawn_blocking(move || {
-            generate_sample(&path_str, &[1, 2]).map(|sample| (path_clone, sample))
-        });
-        sample_tasks.push(task);
-    }
-
-    let mut results = Vec::new();
-    for task in sample_tasks {
-        match task.await {
-            Ok(Ok(pair)) => results.push(pair),
-            Ok(Err(err)) => eprintln!("  Error generating sample: {:?}", err),
-            Err(err) => eprintln!("  Task panicked: {:?}", err),
-        }
-    }
-
-    for (chunk_index, chunk) in results.chunks(BATCH_SIZE).enumerate() {
-        println!("- Processing batch: #{}", chunk_index + 1);
-        let mut samples_batch = Vec::new();
-        let mut paths_batch = Vec::new();
-        for (path, sample) in chunk {
-            paths_batch.push(path.clone());
-            samples_batch.push(sample.clone());
-        }
-
-        if samples_batch.is_empty() {
-            println!("- Skipping empty batch: No samples to process");
-            continue;
-        }
-
-        match extract_metadata(&client, samples_batch).await {
-            Ok(metadata) => {
-                if paths_batch.len() != metadata.len() {
-                    eprintln!(
-                        "  - Warning: Received {} metadata entries for {} files",
-                        metadata.len(),
-                        paths_batch.len()
-                    );
+        let tx = tx.clone();
+        task::spawn(async move {
+            let path = match fs::canonicalize(&path_raw) {
+                Ok(p) => p,
+                Err(e) => {
+                    let _ = tx.send(Err(BiblioError::IOError(e))).await;
+                    return;
                 }
-
-                for (i, m) in metadata.iter().enumerate() {
-                    if i >= paths_batch.len() {
-                        break;
-                    }
-
-                    let name = paths_batch[i]
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_str()
-                        .unwrap_or_default();
-
-                    let name_fmt = format_custom(&m, &config.format) + ".pdf";
-                    let name_path = paths_batch[i].with_file_name(name_fmt.clone());
-
-                    println!("  - File: \"{}\"", name);
-                    match fs::rename(&paths_batch[i], &name_path) {
-                        Ok(_) => println!("    - Renamed \"{}\" to \"{}\"", name, name_fmt),
-                        Err(err) => eprintln!(
-                            "    - Failed to rename \"{:?}\": {}",
-                            paths_batch[i], err
-                        ),
-                    }
+            };
+            
+            let path_str = path.to_str().unwrap_or_default().to_string();
+            
+            match extract_pdf_sample(&path_str, &[1, 2]) {
+                Ok(sample) => {
+                    let _ = tx.send(Ok((path, sample))).await;
+                }
+                Err(e) => {
+                    let _ = tx.send(Err(e)).await;
                 }
             }
-            Err(err) => eprintln!("  - Failed to extract metadata for batch: {}", err),
+        });
+    }
+    
+    drop(tx);
+    
+    process_samples(rx, client, config.format).await?;
+    
+    Ok(())
+}
+
+async fn process_samples(
+    mut rx: mpsc::Receiver<SampleResult>,
+    client: Arc<Client>,
+    format_template: String,
+) -> Result<(), BiblioError> {
+    let mut current_batch = Vec::new();
+    
+    while let Some(result) = rx.recv().await {
+        match result {
+            Ok(item) => {
+                current_batch.push(item);
+                
+                if current_batch.len() >= BATCH_SIZE {
+                    process_batch(&current_batch, &client, &format_template).await;
+                    current_batch.clear();
+                }
+            }
+            Err(e) => {
+                // Log error but continue processing other files
+                eprintln!("Error processing file: {}", e);
+            }
         }
     }
-
+    
+    // Process any remaining items
+    if !current_batch.is_empty() {
+        process_batch(&current_batch, &client, &format_template).await;
+    }
+    
     Ok(())
+}
+
+async fn process_batch(
+    batch: &[(PathBuf, String)], 
+    client: &Client,
+    format_template: &str,
+) {
+    let paths: Vec<_> = batch.iter().map(|(path, _)| path.clone()).collect();
+    let samples: Vec<_> = batch.iter().map(|(_, sample)| sample.clone()).collect();
+    
+    match parse_document_metadata(client, samples).await {
+        Ok(metadata) => {
+            for (i, meta) in metadata.iter().enumerate() {
+                if i >= paths.len() { continue; }
+                
+                let path = &paths[i];
+                let filename = path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or_default();
+                
+                let new_filename = format_filename(meta, format_template) + ".pdf";
+                let new_path = path.with_file_name(&new_filename);
+                
+                match fs::rename(path, &new_path) {
+                    Ok(_) => println!(r#"Renamed: "{}" → "{}""#, filename, new_filename),
+                    Err(e) => eprintln!("Failed to rename {}: {}", filename, e),
+                }
+            }
+        }
+        Err(e) => {
+            // Log the error but continue with other batches
+            eprintln!("Metadata extraction failed: {}", e);
+            
+            // Try to process each file individually to salvage what we can
+            for (_i, (path, sample)) in batch.iter().enumerate() {
+                let filename = path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or_default();
+                
+                println!("Attempting individual processing for: {}", filename);
+                
+                // Attempt individual extraction
+                match parse_document_metadata(client, vec![sample.clone()]).await {
+                    Ok(meta) if !meta.is_empty() => {
+                        let new_filename = format_filename(&meta[0], format_template) + ".pdf";
+                        let new_path = path.with_file_name(&new_filename);
+                        
+                        match fs::rename(path, &new_path) {
+                            Ok(_) => println!("Renamed: {} → {}", filename, new_filename),
+                            Err(e) => eprintln!("Failed to rename {}: {}", filename, e),
+                        }
+                    },
+                    Ok(_) => eprintln!("No metadata received for {}", filename),
+                    Err(e) => eprintln!("Individual processing failed for {}: {}", filename, e),
+                }
+            }
+        }
+    }
 }

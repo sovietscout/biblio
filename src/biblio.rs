@@ -5,51 +5,87 @@ use google_generative_ai_rs::v1::{
 };
 use crate::constants::{MAX_OUTPUT_TOKENS, MAX_TIMEOUT_SECONDS, PROMPT, TEMPERATURE, TOP_K, TOP_P};
 use serde::{Deserialize, Serialize};
-use serde_json::from_str;
+use thiserror::Error;
 
+/// Represents bibliographic metadata extracted from a document
 #[derive(Debug, Deserialize, Serialize)]
-pub(crate) struct BiblioResponse {
+pub struct BiblioResponse {
     pub authors: Option<Vec<String>>,
     pub title: Option<String>,
     pub year: Option<String>,
 }
 
-#[derive(Debug)]
-pub(crate) enum BiblioError {
+/// Errors that can occur during bibliographic operations
+#[derive(Debug, Error)]
+pub enum BiblioError {
+    #[error("Environment error: {0}")]
     ENVError(String),
+    
+    #[error("PDF processing error: {0}")]
     PDFError(String),
+    
+    #[error("Gemini API error: {0}")]
     GeminiError(String),
-    JSONError(serde_json::Error),
-    IOError(std::io::Error),
+    
+    #[error("JSON parsing error: {0}")]
+    JSONError(#[from] serde_json::Error),
+    
+    #[error("I/O error: {0}")]
+    IOError(#[from] std::io::Error),
 }
 
-impl std::fmt::Display for BiblioError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            BiblioError::ENVError(msg) => write!(f, "ENV Error: {}", msg),
-            BiblioError::PDFError(msg) => write!(f, "PDF Error: {}", msg),
-            BiblioError::GeminiError(msg) => write!(f, "Gemini API Error: {}", msg),
-            BiblioError::JSONError(err) => write!(f, "JSON Parsing Error: {}", err),
-            BiblioError::IOError(err) => write!(f, "IO Error: {}", err),
-        }
-    }
+/// Extracts bibliographic metadata from document text samples using the Gemini API
+/// 
+/// # Arguments
+/// * `client` - The Gemini API client to use for requests
+/// * `samples` - Vector of text samples extracted from documents
+///
+/// # Returns
+/// A vector of bibliographic metadata responses corresponding to each input sample
+pub async fn parse_document_metadata(
+    client: &Client, 
+    samples: Vec<String>
+) -> Result<Vec<BiblioResponse>, BiblioError> {
+    // Create a content object for each sample
+    let contents = samples.into_iter()
+        .map(|sample| Content {
+            role: Role::User,
+            parts: vec![Part {
+                text: Some(sample),
+                inline_data: None,
+                file_data: None,
+                video_metadata: None,
+            }],
+        })
+        .collect();
+
+    // Configure the API request
+    let request = build_api_request(contents);
+
+    // Send the request to the Gemini API
+    let response = client.post(MAX_TIMEOUT_SECONDS, &request)
+        .await
+        .map_err(|e| BiblioError::GeminiError(format!("Could not connect to Gemini: {}", e)))?;
+
+    // Extract the text from the response
+    let response_text = response
+        .rest()
+        .and_then(|rest| {
+            rest.candidates
+                .get(0)
+                .and_then(|c| c.content.parts.get(0))
+                .and_then(|p| p.text.clone())
+        })
+        .unwrap_or_default();
+
+    // Parse the JSON response
+    serde_json::from_str(&response_text).map_err(BiblioError::JSONError)
 }
 
-impl std::error::Error for BiblioError {}
-
-pub async fn extract_metadata(client: &Client, samples: Vec<String>) -> Result<Vec<BiblioResponse>, BiblioError> {
-    let contents = samples.into_iter().map(|sample| Content {
-        role: Role::User,
-        parts: vec![Part {
-            text: Some(sample),
-            inline_data: None,
-            file_data: None,
-            video_metadata: None,
-        }],
-    }).collect();
-
-    let request = Request {
-        contents: contents,
+/// Builds the API request with appropriate configuration
+fn build_api_request(contents: Vec<Content>) -> Request {
+    Request {
+        contents,
         tools: vec![],
         safety_settings: vec![],
         generation_config: Some(GenerationConfig {
@@ -67,18 +103,5 @@ pub async fn extract_metadata(client: &Client, samples: Vec<String>) -> Result<V
                 text: Some(PROMPT.to_string())
             }]
         }),
-    };
-
-    let response = client.post(MAX_TIMEOUT_SECONDS, &request).await
-        .map_err(|e| BiblioError::GeminiError(format!("Could not connect to Gemini. {}", e).to_string()))?;
-
-    let response_text = response.rest()
-        .unwrap()
-        .candidates
-        .get(0)
-        .and_then(|c| c.content.parts.get(0))
-        .and_then(|p| p.text.clone())
-        .unwrap_or_default();
-
-    from_str(&response_text).map_err(BiblioError::JSONError)
+    }
 }

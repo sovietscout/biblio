@@ -1,117 +1,137 @@
-use std::{collections::HashMap, env};
-
+use std::{collections::HashMap, env, path::Path};
 use lopdf::Document;
 use crate::biblio::{BiblioResponse, BiblioError};
 
-pub(crate) struct Config {
+/// Configuration for the application
+#[derive(Clone, Debug)]
+pub struct Config {
     pub format: String,
     pub model: String,
     pub api_key: String,
 }
 
+/// Loads configuration from environment variables
 pub fn load_config() -> Result<Config, BiblioError> {
     let model_name = env::var("MODEL").map_err(|_| {
-        eprintln!("Error: `MODEL` key not found in .env. Please set it to your Gemini model.");
-        BiblioError::ENVError("`MODEL` key not found in .env".to_string())
+        BiblioError::ENVError("MODEL key not found in .env file".to_string())
     })?;
-
-    let api_key = env::var("API_KEY").map_err(|_| {
-        eprintln!("Error: `API_KEY` key not found in .env. Please set your Google Gemini API key.");
-        BiblioError::ENVError("`API_KEY` key not found in .env".to_string())
-    })?;
-
-    let format_string = match env::var("FORMAT") {
-        Ok(format) => format,
-        Err(_) => {
-            eprintln!("Warning: `FORMAT` key not found in .env. Using default format string.");
-            "{authors} ({year}). {title}".to_string()
-        }
-    };
     
-    Ok(Config { format: format_string, model: model_name, api_key: api_key })
+    let api_key = env::var("API_KEY").map_err(|_| {
+        BiblioError::ENVError("API_KEY not found in .env file".to_string())
+    })?;
+    
+    let format_string = env::var("FORMAT").unwrap_or_else(|_| {
+        // Default format if not specified
+        "{authors} ({year}). {title}".to_string()
+    });
+   
+    Ok(Config { 
+        format: format_string, 
+        model: model_name, 
+        api_key 
+    })
 }
 
-pub fn format_custom(data: &BiblioResponse, format_str: &str) -> String {
-    let sanitize = |s: &str| {
-        s.chars()
-            .map(|c| match c {
-                '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
-                _ => c,
-            })
-            .collect::<String>()
-    };
-
+/// Formats bibliographic data according to a template string
+pub fn format_filename(data: &BiblioResponse, format_str: &str) -> String {
     let authors = match data.authors.as_deref() {
         Some([]) | None => "Unknown Author".to_string(),
         Some([one]) => one.clone(),
         Some([first, second]) => format!("{} & {}", first, second),
         Some([first, ..]) => format!("{} et al.", first),
     };
-
+    
     let title = data.title.as_deref().unwrap_or("Untitled").to_string();
+    
     let year = data.year.as_deref().unwrap_or("Unknown Year").to_string();
-
+    
     let replacements = HashMap::from([
-        ("authors", sanitize(&authors)),
-        ("title", sanitize(&title)),
-        ("year", sanitize(&year)),
+        ("authors", sanitize_filename(&authors)),
+        ("title", sanitize_filename(&title)),
+        ("year", sanitize_filename(&year)),
     ]);
 
-    let mut result = String::new();
+    
+    // Process the format string with replacements
+    process_format_string(format_str, &replacements)
+}
+
+/// Sanitizes a string for use in filenames
+fn sanitize_filename(s: &str) -> String {
+    s.chars()
+        .map(|c| match c {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
+            _ => c,
+        })
+        .collect()
+}
+
+/// Processes a format string, replacing placeholders with values
+fn process_format_string(format_str: &str, replacements: &HashMap<&'static str, String>) -> String {
+    let mut result = String::with_capacity(format_str.len() * 2);
     let mut chars = format_str.chars().peekable();
-
+    
     while let Some(&c) = chars.peek() {
-        if c == '{' {
-            chars.next(); // Consume '{'
-            
-            if chars.peek() == Some(&'{') {
-                // Found escaped '{{', keep a single '{'
-                result.push('{');
-                chars.next(); // Consume second '{'
-                continue;
-            }
-
-            let mut placeholder = String::new();
-            while let Some(&next_c) = chars.peek() {
-                if next_c == '}' {
-                    chars.next(); // Consume '}'
-                    break;
+        match c {
+            '{' => {
+                chars.next(); // Consume '{'
+                
+                // Handle escaped braces
+                if chars.peek() == Some(&'{') {
+                    result.push('{');
+                    chars.next(); // Consume second '{'
+                    continue;
                 }
-                placeholder.push(next_c);
+                
+                // Collect placeholder name
+                let mut placeholder = String::new();
+                while let Some(&next_c) = chars.peek() {
+                    if next_c == '}' {
+                        chars.next(); // Consume '}'
+                        break;
+                    }
+                    placeholder.push(next_c);
+                    chars.next();
+                }
+                
+                // Replace with value or keep placeholder if not found
+                if let Some(replacement) = replacements.get(placeholder.as_str()) {
+                    result.push_str(replacement);
+                } else {
+                    result.push('{');
+                    result.push_str(&placeholder);
+                    result.push('}');
+                }
+            },
+            '}' => {
+                chars.next(); // Consume '}'
+                
+                // Handle escaped braces
+                if chars.peek() == Some(&'}') {
+                    result.push('}');
+                    chars.next(); // Consume second '}'
+                } else {
+                    // Unmatched '}', treat as literal
+                    result.push('}');
+                }
+            },
+            _ => {
+                result.push(c);
                 chars.next();
             }
-
-            if let Some(replacement) = replacements.get(placeholder.as_str()) {
-                result.push_str(replacement);
-            } else {
-                result.push_str(&format!("{{{}}}", placeholder)); // Preserve unknown placeholders
-            }
-        } else if c == '}' {
-            chars.next(); // Consume '}'
-
-            if chars.peek() == Some(&'}') {
-                // Found escaped '}}', keep a single '}'
-                result.push('}');
-                chars.next(); // Consume second '}'
-            } else {
-                // Unmatched '}', treat as literal
-                result.push('}');
-            }
-        } else {
-            result.push(c);
-            chars.next();
         }
     }
-
+    
     result
 }
 
-pub fn generate_sample(path: &str, pages: &[u32]) -> Result<String, BiblioError> {
-    let doc = Document::load(path)
+/// Extracts text from specified pages of a PDF file
+pub fn extract_pdf_sample<P: AsRef<Path>>(path: P, pages: &[u32]) -> Result<String, BiblioError> {
+    let doc = Document::load(path.as_ref())
         .map_err(|e| BiblioError::PDFError(format!("Failed to load PDF: {}", e)))?;
-
+    
     let text = doc.extract_text(pages)
-        .map_err(|e| BiblioError::PDFError(format!("Failed to extract text from PDF: {}", e)))?;
-
+        .map_err(|e| BiblioError::PDFError(format!("Failed to extract text: {}", e)))?;
+    
     Ok(text)
 }
