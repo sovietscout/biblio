@@ -1,6 +1,6 @@
 [package]
 name = "biblio"
-version = "1.0.0"
+version = "1.2.0"
 edition = "2021"
 
 [dependencies]
@@ -11,3 +11,4 @@ serde = "1.0.218"
 lopdf = "0.35.0"
 dotenv = "0.15.0"
 google-generative-ai-rs = { version = "0.3.4", features = ["beta"] }
+thiserror = "2.0.12"

@@ -1,13 +1,13 @@
 # Biblio
 Biblio is a simple command-line tool for managing academic PDFs. It extracts metadata (title, authors, year) and renames files automatically based on a customizable format.
 
-## 🚀Features
+## 🚀 Features
 - Extracts metadata using Google Gemini API.
 - Renames PDFs with a structured naming format.
 - Batch processes multiple files.
 - Prevents filename conflicts.
 
-## 🔧Installation
+## 🔧 Installation
 
 ### Option 1: Download the Windows Executable
 1. Download the latest `.exe` file from the [Releases](https://github.com/sovietscout/biblio/releases/tag/v1.1) page.
@@ -25,7 +25,7 @@ Biblio is a simple command-line tool for managing academic PDFs. It extracts met
    cargo build --release
    ```
 
-## 📄Configuration
+## 📄 Configuration
 Create a `.env` file in the project root:
 ```properties
 MODEL=gemini-2.0-flash-lite
@@ -39,13 +39,13 @@ FORMAT="{authors} ({year}). {title}"
  - `{title}` → Document title (defaults to `Untitled` if missing).
 - Example format: `FORMAT="{authors} - {title} ({year})"` renames a file to `Smith, J. - Research Study (2020).pdf`.
 
-## 🔑Getting a Google Gemini API Key
+## 🔑 Getting a Google Gemini API Key
 1. Go to [Google AI Studio](https://aistudio.google.com/).
 2. Sign in with your Google account.
 3. Navigate to the 'Get API key' section and create a new API key.
 4. Copy the API key and add it to your `.env` file as `API_KEY`.
 
-## 📂Usage
+## 📂 Usage
 ```sh
 biblio file1.pdf file2.pdf ...
 ```
@@ -55,9 +55,9 @@ biblio file1.pdf file2.pdf ...
 ### Example
 ```sh
 > biblio paper1.pdf paper2.pdf
-- Processing 2 files...
-  - "paper1.pdf" → "Smith, J. (2020). Research Study.pdf"
-  - "paper2.pdf" → "Doe, J., & Brown, A. (2018). AI in Healthcare.pdf"
+Processing 2 files
+Renamed: paper1.pdf → Smith, J. (2020). Research Study.pdf
+Renamed: paper2.pdf → Doe, J., & Brown, A. (2018). AI in Healthcare.pdf
 ```
 
 ## 📜License
