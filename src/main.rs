@@ -8,8 +8,9 @@ use google_generative_ai_rs::v1::{api::Client, gemini::Model};
 use std::{
     env,
     fs,
+    io::{self, BufRead}, 
     path::PathBuf,
-    sync::Arc,
+    sync::Arc
 };
 use tokio::{
     sync::mpsc,
@@ -21,13 +22,37 @@ type SampleResult = Result<(PathBuf, String), BiblioError>;
 
 #[tokio::main]
 async fn main() -> Result<(), BiblioError> {
-    dotenv::dotenv().ok();
+    let env_path = env::current_exe()?
+        .parent()
+        .expect("Error: Failed to get executable directory")
+        .join(".env");
+
+    // Load the .env file if it exists
+    if env_path.exists() {
+        dotenv::from_path(&env_path).ok();
+    } else {
+        eprintln!("Error: .env file not found at {}", env_path.display());
+        return Ok(());
+    }
+    
     let config = load_config()?;
     let client = Arc::new(Client::new_from_model(Model::Custom(config.model.clone()), config.api_key.clone()));
     
-    let args: Vec<PathBuf> = env::args_os().skip(1).map(PathBuf::from).collect();
+    let mut args: Vec<PathBuf> = env::args_os().skip(1).map(PathBuf::from).collect();
+    
+    // Read from stdin if no args are provided
     if args.is_empty() {
-        eprintln!("Error: No files specified. Usage: biblio <file1.pdf> <file2.pdf> ...");
+        let stdin = io::stdin();
+        args = stdin
+            .lock()
+            .lines()
+            .filter_map(Result::ok)
+            .map(PathBuf::from)
+            .collect();
+    }
+    
+    if args.is_empty() {
+        eprintln!("Error: No files specified.\nUsage: biblio <file1.pdf> <file2.pdf> ...");
         return Ok(());
     }
 
