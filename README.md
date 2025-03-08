@@ -2,15 +2,15 @@
 Biblio is a simple command-line tool for managing academic PDFs. It extracts metadata (title, authors, year) and renames files automatically based on a customizable format.
 
 ## 🚀 Features
-- Extracts metadata using Google Gemini API.
-- Renames PDFs with a structured naming format.
-- Batch processes multiple files.
-- Prevents filename conflicts.
+- **Automated Metadata Extraction**: Extracts titles, authors, and years from PDFs using the Google Gemini API.
+- **Batch Processing**: Handles multiple files at once for faster results.
+- **Customisable File Naming**: Renames files in a structured format you define.
+- **Hassle-Free Organisation**: Prevents duplicate filenames and keeps your files tidy.
 
 ## 🔧 Installation
 
 ### Option 1: Download the Windows Executable
-1. Download the latest `.exe` file from the [Releases](https://github.com/sovietscout/biblio/releases/tag/v1.1) page.
+1. Download the latest `.exe` file from the [Releases](https://github.com/sovietscout/biblio/releases/) page.
 2. Place it in a preferred directory for easy access.
 3. Run the .exe directly from the command line or by double-clicking it.
 
@@ -28,8 +28,11 @@ Biblio is a simple command-line tool for managing academic PDFs. It extracts met
 ## 📄 Configuration
 Create a `.env` file in the project root:
 ```properties
+# API Configuration
 MODEL=gemini-2.0-flash-lite
 API_KEY=YOUR_GEMINI_API_KEY
+
+# Output Formatting
 FORMAT="{authors} ({year}). {title}"
 ```
 **Customizing the Format:**
