@@ -12,7 +12,6 @@ Biblio is a simple command-line tool for managing academic PDFs. It extracts met
 ### Windows (Standalone Binary)
 1. Download the latest `.exe` file from the [Releases](https://github.com/sovietscout/biblio/releases/) page.
 2. Place it in a preferred directory for easy access. [Optionally, add the folder to `System Properties > Advanced > Environment Variables > PATH` for global access]
-3. Run the .exe directly from the command line or by double-clicking it.
 
 ### Linux/macOS (Build from Source)
 1. **Clone the repository:**
@@ -53,7 +52,7 @@ FORMAT="{authors} ({year}). {title}"
 ```sh
 biblio file1.pdf file2.pdf ...
 ```
-### Piping for Bulk Processing
+### Bulk Processing
 Instead of listing files manually, piping lets you process all PDFs in a folder:
 
 **Windows (PowerShell)**
@@ -66,6 +65,6 @@ Get-ChildItem -Path . -Filter *.pdf | ForEach-Object { $_.FullName } | biblio
 ls *.pdf | biblio
 ```
 
-## 📜License
+## 📜 License
 MIT License. See `LICENSE` for details.
 
