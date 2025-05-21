@@ -124,37 +124,58 @@ async fn process_samples(
 }
 
 async fn process_batch(
+    // batch: A slice of tuples, where each tuple contains:
+    //   - PathBuf: The canonicalized, absolute path to the original PDF file.
+    //   - String: A text sample extracted from the PDF.
     batch: &[(PathBuf, String)], 
     client: &Client,
     format_template: &str,
 ) {
-    let paths: Vec<_> = batch.iter().map(|(path, _)| path.clone()).collect();
+    // Extract just the text samples to send to the metadata parsing function.
     let samples: Vec<_> = batch.iter().map(|(_, sample)| sample.clone()).collect();
     
+    // Attempt to parse metadata for the entire batch of samples.
     match parse_document_metadata(client, samples).await {
-        Ok(metadata) => {
-            for (i, meta) in metadata.iter().enumerate() {
-                if i >= paths.len() { continue; }
-                
-                let path = &paths[i];
-                let filename = path.file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or_default();
-                
-                let new_filename = format_filename(meta, format_template) + ".pdf";
-                let new_path = path.with_file_name(&new_filename);
-                
-                match fs::rename(path, &new_path) {
-                    Ok(_) => println!(r#"Renamed: "{}" → "{}""#, filename, new_filename),
-                    Err(e) => eprintln!("Failed to rename {}: {}", filename, e),
+        Ok(metadata_responses) => {
+            // Iterate through the original batch (which includes file paths)
+            // and the metadata responses simultaneously.
+            // This assumes that the `parse_document_metadata` function (and the underlying API)
+            // returns metadata in the same order as the input samples.
+            for (i, (path, _original_sample)) in batch.iter().enumerate() {
+                // `metadata_responses.get(i)` attempts to get the metadata for the i-th sample.
+                if let Some(meta) = metadata_responses.get(i) {
+                    let filename = path.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or_default();
+                    
+                    let new_filename = format_filename(meta, format_template) + ".pdf";
+                    let new_path = path.with_file_name(&new_filename);
+                    
+                    match fs::rename(path, &new_path) {
+                        Ok(_) => println!(r#"Renamed: "{}" → "{}""#, filename, new_filename),
+                        Err(e) => eprintln!("Failed to rename {}: {}", filename, e),
+                    }
+                } else {
+                    // This case is triggered if `parse_document_metadata` returns fewer metadata items
+                    // than the number of samples submitted, or if a specific metadata item is missing
+                    // (e.g. if the API could return nulls in the list, though current `google-generative-ai-rs`
+                    // typically wraps this in a Result). This indicates an issue with processing that
+                    // specific file's sample within the batch.
+                    let filename = path.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or_default();
+                    eprintln!("Warning: No metadata returned for file (index {}): {}. Original sample might have caused an issue in the batch.", i, filename);
                 }
             }
         }
+        // This block is executed if the batch metadata extraction fails for any reason (e.g., API error).
         Err(e) => {
             // Log the error but continue with other batches
-            eprintln!("Metadata extraction failed: {}", e);
+            eprintln!("Metadata extraction failed for batch: {}", e);
             
-            // Try to process each file individually to salvage what we can
+            // Fallback: Try to process each file in the current batch individually.
+            // This allows salvaging results for files that can be processed,
+            // even if one or more files in the batch caused a global error.
             for (_i, (path, sample)) in batch.iter().enumerate() {
                 let filename = path.file_name()
                     .and_then(|n| n.to_str())
